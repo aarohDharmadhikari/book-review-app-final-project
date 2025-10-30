@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Book Review Application</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#4f46e5',
+                        'secondary': '#60a5fa',
+                        'accent': '#facc15',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .container-card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-radius: 1rem;
+        }
+        .text-input {
+            @apply w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition duration-150;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+
+    <!-- Navbar -->
+    <header class="bg-primary text-white shadow-lg sticky top-0 z-10">
+        <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold tracking-tight">Book Review Central</h1>
+            <div id="nav-actions" class="flex space-x-4">
+                <button onclick="changeView('home')" class="hover:bg-indigo-600 px-3 py-1 rounded-lg transition duration-150">Home</button>
+                <button id="nav-register" onclick="changeView('register')" class="hover:bg-indigo-600 px-3 py-1 rounded-lg transition duration-150">Register</button>
+                <button id="nav-login" onclick="changeView('login')" class="hover:bg-indigo-600 px-3 py-1 rounded-lg transition duration-150">Login</button>
+                <button id="nav-profile" onclick="changeView('profile')" class="hover:bg-indigo-600 px-3 py-1 rounded-lg transition duration-150 hidden">Profile</button>
+                <button id="nav-logout" onclick="logoutUser()" class="hover:bg-indigo-600 px-3 py-1 rounded-lg transition duration-150 hidden">Logout</button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div id="app-container" class="bg-white p-6 md:p-10 container-card">
+            <!-- Content will be rendered here -->
+        </div>
+    </main>
+
+    <!-- Success/Error Message Box -->
+    <div id="message-box" class="fixed top-4 right-4 p-4 rounded-lg shadow-xl text-white transition-opacity duration-300 opacity-0 z-20" role="alert"></div>
+
+    <script type="module">
+        // --- MOCK DATABASE (Simulating server-side data) ---
+        // Storing book data and user credentials in-memory for this single-file simulation.
+        const MOCKED_BOOKS = {
+            "978-0321765723": { isbn: "978-0321765723", title: "The Lord of the Rings", author: "J.R.R. Tolkien", reviews: { "userA": "A timeless masterpiece.", "userB": "Too much walking, 4/5." } },
+            "978-1503254921": { isbn: "978-1503254921", title: "Pride and Prejudice", author: "Jane Austen", reviews: { "userC": "Timeless romance and wit.", "userA": "Excellent character study." } },
+            "978-0743273565": { isbn: "978-0743273565", title: "The Great Gatsby", author: "F. Scott Fitzgerald", reviews: { "userD": "A tragic look at the American Dream." } },
+            "978-0061120084": { isbn: "978-0061120084", title: "To Kill a Mockingbird", author: "Harper Lee", reviews: { "userE": "Powerful and essential reading." } }
+        };
+
+        const MOCKED_USERS = {
+            "testuser": "password123", // username: password
+            "userA": "securepass",
+        };
+
+        // --- AUTHENTICATION STATE (Simulating JWT Session) ---
+        let currentView = 'home';
+        let currentUser = null; // Stores username upon successful login
+
+        const APP_CONTAINER = document.getElementById('app-container');
+        const MESSAGE_BOX = document.getElementById('message-box');
+
+        // Check for session/JWT on load (using sessionStorage for ephemeral session)
+        const checkAuth = () => {
+            const token = sessionStorage.getItem('jwt_token');
+            const user = sessionStorage.getItem('username');
+            if (token && user) {
+                // In a real app, you'd validate the token with the server.
+                // Here, we just assume it's valid if present.
+                currentUser = user;
+                updateNav();
+            }
+        };
+
+        const updateNav = () => {
+            const loggedIn = !!currentUser;
+            document.getElementById('nav-register').classList.toggle('hidden', loggedIn);
+            document.getElementById('nav-login').classList.toggle('hidden', loggedIn);
+            document.getElementById('nav-profile').classList.toggle('hidden', !loggedIn);
+            document.getElementById('nav-logout').classList.toggle('hidden', !loggedIn);
+
+            if (loggedIn) {
+                document.getElementById('nav-profile').textContent = `Welcome, ${currentUser}`;
+            }
+        };
+
+        // --- UTILITY FUNCTIONS ---
+
+        const showMessage = (text, type = 'success') => {
+            MESSAGE_BOX.textContent = text;
+            MESSAGE_BOX.classList.remove('opacity-0', 'bg-red-500', 'bg-green-500', 'bg-blue-500');
+
+            if (type === 'success') {
+                MESSAGE_BOX.classList.add('bg-green-500');
+            } else if (type === 'error') {
+                MESSAGE_BOX.classList.add('bg-red-500');
+            } else {
+                MESSAGE_BOX.classList.add('bg-blue-500');
+            }
+
+            MESSAGE_BOX.classList.add('opacity-100');
+            setTimeout(() => {
+                MESSAGE_BOX.classList.remove('opacity-100');
+                MESSAGE_BOX.classList.add('opacity-0');
+            }, 3000);
+        };
+
+        // --- MOCKED REST API CALLS (Simulating Tasks 1-5, 8-9) ---
+
+        // Task 1: Get the book list available in the shop.
+        const getBookList = async () => {
+            await new Promise(resolve => setTimeout(resolve, 100)); // Simulate network delay
+            return Object.values(MOCKED_BOOKS);
+        };
+
+        // Task 2: Get the books based on ISBN.
+        const getBookByISBN = async (isbn) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return MOCKED_BOOKS[isbn];
+        };
+
+        // Task 3: Get all books by Author.
+        const getBooksByAuthor = async (author) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return Object.values(MOCKED_BOOKS).filter(book =>
+                book.author.toLowerCase().includes(author.toLowerCase())
+            );
+        };
+
+        // Task 4: Get all books based on Title.
+        const getBooksByTitle = async (title) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            return Object.values(MOCKED_BOOKS).filter(book =>
+                book.title.toLowerCase().includes(title.toLowerCase())
+            );
+        };
+
+        // Task 5: Get book Reviews.
+        const getBookReviews = async (isbn) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const book = MOCKED_BOOKS[isbn];
+            return book ? book.reviews : {};
+        };
+
+        // Task 6: Register New user
+        const registerUser = async (username, password) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (MOCKED_USERS[username]) {
+                return { success: false, message: "User already exists." };
+            }
+            MOCKED_USERS[username] = password;
+            return { success: true, message: "Registration successful. Please log in." };
+        };
+
+        // Task 7: Login as a Registered user (Simulating JWT generation)
+        const loginUser = async (username, password) => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (MOCKED_USERS[username] && MOCKED_USERS[username] === password) {
+                // Generate a mock JWT
+                const mockToken = btoa(JSON.stringify({ user: username, exp: Date.now() + 3600000 }));
+                sessionStorage.setItem('jwt_token', mockToken);
+                sessionStorage.setItem('username', username);
+                currentUser = username;
+                return { success: true, message: "Login successful.", token: mockToken };
+            }
+            return { success: false, message: "Invalid username or password." };
+        };
+
+        // Task 8: Add/Modify a book review (Requires Auth)
+        const addModifyReview = async (isbn, reviewText) => {
+            if (!currentUser) return { success: false, message: "Authentication required." };
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const book = MOCKED_BOOKS[isbn];
+            if (book) {
+                book.reviews[currentUser] = reviewText;
+                return { success: true, message: `Review for ${book.title} updated/added.` };
+            }
+            return { success: false, message: "Book not found." };
+        };
+
+        // Task 9: Delete book review added by that particular user (Requires Auth)
+        const deleteReview = async (isbn) => {
+            if (!currentUser) return { success: false, message: "Authentication required." };
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const book = MOCKED_BOOKS[isbn];
+            if (book && book.reviews[currentUser]) {
+                delete book.reviews[currentUser];
+                return { success: true, message: `Your review for ${book.title} has been deleted.` };
+            }
+            return { success: false, message: "Review not found or not yours to delete." };
+        };
+
+        const logoutUser = () => {
+            sessionStorage.removeItem('jwt_token');
+            sessionStorage.removeItem('username');
+            currentUser = null;
+            showMessage("Logged out successfully.", "info");
+            updateNav();
+            changeView('home');
+        };
+
+        // --- UI RENDERERS ---
+
+        const renderBookList = async (books) => {
+            let html = books.length > 0
+                ? `<ul class="space-y-4">`
+                : `<p class="text-xl text-gray-500 text-center">No books found matching your criteria.</p>`;
+
+            books.forEach(book => {
+                const reviewCount = Object.keys(book.reviews).length;
+                html += `
+                    <li class="p-4 border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition duration-150">
+                        <h2 class="text-xl font-semibold text-primary">${book.title}</h2>
+                        <p class="text-gray-600">Author: ${book.author}</p>
+                        <p class="text-sm text-gray-500">ISBN: ${book.isbn}</p>
+                        <div class="mt-2 flex justify-between items-center">
+                            <span class="text-sm font-medium text-secondary">${reviewCount} Reviews</span>
+                            <button onclick="changeView('details', '${book.isbn}')" class="bg-primary text-white px-3 py-1 rounded-lg hover:bg-indigo-600 transition duration-150">View Details</button>
+                        </div>
+                    </li>
+                `;
+            });
+            html += books.length > 0 ? `</ul>` : '';
+            return html;
+        };
+
+        const renderHome = async () => {
+            APP_CONTAINER.innerHTML = `<h2 class="text-3xl font-bold mb-6 text-gray-800">Available Books</h2>`;
+            try {
+                const books = await getBookList();
+                const listHtml = await renderBookList(books);
+                APP_CONTAINER.innerHTML += listHtml;
+            } catch (error) {
+                APP_CONTAINER.innerHTML += `<p class="text-red-500">Error loading book list.</p>`;
+            }
+            renderSearchForm();
+        };
+
+        const renderSearchForm = () => {
+            const formHtml = `
+                <div class="mt-10 pt-6 border-t border-gray-200">
+                    <h3 class="text-2xl font-semibold mb-4 text-gray-800">Search Books</h3>
+                    <form id="search-form" class="space-y-4">
+                        <select id="search-type" class="text-input">
+                            <option value="all">All Books</option>
+                            <option value="isbn">Search by ISBN (Task 2)</option>
+                            <option value="author">Search by Author (Task 3)</option>
+                            <option value="title">Search by Title (Task 4)</option>
+                        </select>
+                        <input type="text" id="search-query" placeholder="Enter search term (e.g., Tolkien, 978-0321765723)" class="text-input">
+                        <button type="submit" class="w-full bg-secondary text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-150">Search</button>
+                    </form>
+                </div>
+            `;
+            APP_CONTAINER.innerHTML += formHtml;
+
+            document.getElementById('search-form').addEventListener('submit', handleSearch);
+        };
+
+        const handleSearch = async (event) => {
+            event.preventDefault();
+            const type = document.getElementById('search-type').value;
+            const query = document.getElementById('search-query').value.trim();
+
+            APP_CONTAINER.innerHTML = `<h2 class="text-3xl font-bold mb-6 text-gray-800">Search Results</h2>
+                                       <p class="text-gray-500 mb-4">Searching for: ${query} by ${type}</p>
+                                       <div class="text-center p-8 text-secondary">
+                                            <svg class="animate-spin h-8 w-8 text-primary mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            <p class="mt-2">Loading...</p>
+                                        </div>`;
+            
+            let books = [];
+            try {
+                if (type === 'isbn') {
+                    const book = await getBookByISBN(query);
+                    if (book) books = [book];
+                } else if (type === 'author') {
+                    books = await getBooksByAuthor(query);
+                } else if (type === 'title') {
+                    books = await getBooksByTitle(query);
+                } else {
+                    books = await getBookList();
+                }
+                
+                const listHtml = await renderBookList(books);
+                APP_CONTAINER.innerHTML = `<h2 class="text-3xl font-bold mb-6 text-gray-800">Search Results</h2>` + listHtml;
+            } catch (error) {
+                APP_CONTAINER.innerHTML = `<p class="text-red-500 text-center">An error occurred during search: ${error.message}</p>`;
+            }
+            renderSearchForm(); // Keep search form visible
+        };
+
+        const renderBookDetails = async (isbn) => {
+            APP_CONTAINER.innerHTML = `
+                <div class="text-center p-8 text-secondary">
+                    <svg class="animate-spin h-8 w-8 text-primary mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <p class="mt-2">Loading Book Details...</p>
+                </div>`;
+            
+            const book = await getBookByISBN(isbn);
+
+            if (!book) {
+                APP_CONTAINER.innerHTML = `<h2 class="text-3xl font-bold mb-6 text-red-500">Book Not Found</h2>`;
+                return;
+            }
+
+            const reviews = await getBookReviews(isbn);
+            const userReview = reviews[currentUser];
+            const reviewsHtml = Object.entries(reviews).map(([user, review]) => {
+                const isUsersReview = user === currentUser;
+                return `
+                    <div class="p-3 border-b border-gray-100 ${isUsersReview ? 'bg-indigo-50/50' : ''} rounded-lg mb-2">
+                        <p class="font-semibold text-gray-700">${isUsersReview ? 'Your Review' : user}</p>
+                        <p class="text-gray-600 italic">"${review}"</p>
+                        ${isUsersReview ? `<button onclick="handleDeleteReview('${isbn}')" class="text-xs text-red-500 hover:text-red-700 mt-1">Delete Review (Task 9)</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            const reviewForm = currentUser ? `
+                <div class="mt-6 pt-6 border-t border-gray-200">
+                    <h3 class="text-xl font-semibold mb-3 text-gray-800">${userReview ? 'Modify Your Review (Task 8)' : 'Add Your Review (Task 8)'}</h3>
+                    <form id="review-form" onsubmit="handleAddModifyReview(event, '${isbn}')">
+                        <textarea id="review-text" class="text-input h-24 mb-3" placeholder="Write your review here...">${userReview || ''}</textarea>
+                        <button type="submit" class="bg-accent text-gray-900 py-2 px-4 rounded-lg font-semibold hover:bg-yellow-500 transition duration-150">Submit Review</button>
+                    </form>
+                </div>
+            ` : `
+                <div class="mt-6 pt-6 border-t border-gray-200 text-center p-4 bg-gray-50 rounded-lg">
+                    <p class="text-gray-600">Please <button onclick="changeView('login')" class="text-primary font-medium hover:underline">Log in</button> to add or modify a review.</p>
+                </div>
+            `;
+
+            APP_CONTAINER.innerHTML = `
+                <button onclick="changeView('home')" class="text-sm text-primary hover:underline mb-4">&larr; Back to Book List</button>
+                <h2 class="text-4xl font-extrabold text-gray-900 mb-2">${book.title}</h2>
+                <p class="text-xl text-secondary mb-4">by ${book.author}</p>
+                <p class="text-gray-500 mb-6">ISBN: ${book.isbn}</p>
+
+                <div class="mb-8">
+                    <h3 class="text-2xl font-semibold mb-3 text-gray-800">User Reviews (Task 5)</h3>
+                    ${reviewsHtml || '<p class="text-gray-500 italic">No reviews yet. Be the first!</p>'}
+                </div>
+
+                ${reviewForm}
+            `;
+        };
+
+        const handleAddModifyReview = async (event, isbn) => {
+            event.preventDefault();
+            const reviewText = document.getElementById('review-text').value.trim();
+            if (!reviewText) {
+                showMessage("Review text cannot be empty.", "error");
+                return;
+            }
+            const result = await addModifyReview(isbn, reviewText);
+            showMessage(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                renderBookDetails(isbn); // Refresh details
+            }
+        };
+
+        const handleDeleteReview = async (isbn) => {
+            if (!confirm("Are you sure you want to delete your review? (Task 9)")) return;
+
+            const result = await deleteReview(isbn);
+            showMessage(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                renderBookDetails(isbn); // Refresh details
+            }
+        };
+
+        const renderRegister = () => {
+            APP_CONTAINER.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-gray-800">Register New User (Task 6)</h2>
+                <form id="register-form" class="max-w-md mx-auto space-y-4">
+                    <div>
+                        <label for="reg-username" class="block text-sm font-medium text-gray-700">Username</label>
+                        <input type="text" id="reg-username" class="text-input" required>
+                    </div>
+                    <div>
+                        <label for="reg-password" class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="reg-password" class="text-input" required>
+                    </div>
+                    <button type="submit" class="w-full bg-primary text-white py-3 rounded-lg font-semibold hover:bg-indigo-600 transition duration-150">Register</button>
+                </form>
+            `;
+            document.getElementById('register-form').addEventListener('submit', handleRegister);
+        };
+
+        const handleRegister = async (event) => {
+            event.preventDefault();
+            const username = document.getElementById('reg-username').value.trim();
+            const password = document.getElementById('reg-password').value;
+            
+            const result = await registerUser(username, password);
+            showMessage(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                changeView('login');
+            }
+        };
+
+        const renderLogin = () => {
+            APP_CONTAINER.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-gray-800">Login (Task 7)</h2>
+                <p class="text-sm text-gray-500 mb-4 text-center">Try: testuser / password123</p>
+                <form id="login-form" class="max-w-md mx-auto space-y-4">
+                    <div>
+                        <label for="log-username" class="block text-sm font-medium text-gray-700">Username</label>
+                        <input type="text" id="log-username" class="text-input" required>
+                    </div>
+                    <div>
+                        <label for="log-password" class="block text-sm font-medium text-gray-700">Password</label>
+                        <input type="password" id="log-password" class="text-input" required>
+                    </div>
+                    <button type="submit" class="w-full bg-secondary text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-150">Log In</button>
+                </form>
+            `;
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+        };
+
+        const handleLogin = async (event) => {
+            event.preventDefault();
+            const username = document.getElementById('log-username').value.trim();
+            const password = document.getElementById('log-password').value;
+            
+            const result = await loginUser(username, password);
+            showMessage(result.message, result.success ? 'success' : 'error');
+            if (result.success) {
+                updateNav();
+                changeView('home');
+            }
+        };
+
+        const renderProfile = () => {
+            APP_CONTAINER.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-gray-800">User Profile</h2>
+                <div class="bg-gray-50 p-6 rounded-lg shadow-inner max-w-lg mx-auto space-y-3">
+                    <p class="text-lg"><strong>Username:</strong> <span class="text-primary">${currentUser}</span></p>
+                    <p class="text-lg"><strong>Status:</strong> <span class="text-green-600 font-semibold">Logged In</span></p>
+                    <p class="text-sm text-gray-500 pt-2 border-t mt-4">
+                        This session is authenticated via a simulated JWT stored in browser storage, representing a session-level authentication.
+                    </p>
+                    <button onclick="logoutUser()" class="bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition duration-150">Logout</button>
+                </div>
+            `;
+        };
+
+        // --- CORE VIEW CONTROLLER ---
+        window.changeView = (view, data = null) => {
+            currentView = view;
+            APP_CONTAINER.innerHTML = '';
+
+            switch(view) {
+                case 'home':
+                    renderHome();
+                    break;
+                case 'details':
+                    renderBookDetails(data);
+                    break;
+                case 'register':
+                    renderRegister();
+                    break;
+                case 'login':
+                    renderLogin();
+                    break;
+                case 'profile':
+                    renderProfile();
+                    break;
+                default:
+                    renderHome();
+            }
+        };
+
+        // Attach to global scope for button clicks
+        window.logoutUser = logoutUser;
+        window.handleAddModifyReview = handleAddModifyReview;
+        window.handleDeleteReview = handleDeleteReview;
+
+        // Initialization
+        checkAuth();
+        changeView('home');
+    </script>
+</body>
+</html>
